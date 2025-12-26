@@ -1,38 +1,64 @@
 /**
- * Quota Detail Panel - Interactive Webview Panel
+ * 配额详情面板
+ *
+ * 使用 Webview 展示详细的配额信息。
  */
 
 import * as vscode from 'vscode';
-import { QuotaSnapshot, ModelQuotaInfo } from './types';
+import type { Disposable } from 'vscode';
+import type { QuotaSnapshot, ModelQuotaInfo } from '../core/types';
+import type { ILocalizationService } from '../core/interfaces/ILocalizationService';
+import type { EventBus } from '../core/events/EventBus';
+import { EventType } from '../core/events/events';
 
-export class QuotaPanel {
+/**
+ * 配额面板
+ */
+export class QuotaPanel implements Disposable {
   public static currentPanel: QuotaPanel | undefined;
-  private readonly _panel: vscode.WebviewPanel;
-  private _disposables: vscode.Disposable[] = [];
+  private readonly panel: vscode.WebviewPanel;
+  private disposables: vscode.Disposable[] = [];
+  private eventSubscriptions: vscode.Disposable[] = [];
+  private disposed: boolean = false;
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this._panel = panel;
+  private constructor(
+    panel: vscode.WebviewPanel,
+    private readonly localizationService: ILocalizationService,
+    private readonly eventBus?: EventBus
+  ) {
+    this.panel = panel;
 
-    // Set the webview's initial html content
-    this._update();
+    // 设置初始内容
+    this.update();
 
-    // Listen for when the panel is disposed
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    // 监听面板关闭
+    this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+
+    // 订阅事件
+    this.subscribeToEvents();
   }
 
-  public static createOrShow(extensionUri: vscode.Uri, snapshot: QuotaSnapshot | null) {
+  /**
+   * 创建或显示面板
+   */
+  public static createOrShow(
+    extensionUri: vscode.Uri,
+    snapshot: QuotaSnapshot | null,
+    localizationService: ILocalizationService,
+    eventBus?: EventBus
+  ): void {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
       : undefined;
 
-    // If we already have a panel, show it
+    // 如果已有面板，显示并更新
     if (QuotaPanel.currentPanel) {
-      QuotaPanel.currentPanel._panel.reveal(column);
+      QuotaPanel.currentPanel.panel.reveal(column);
       QuotaPanel.currentPanel.updateContent(snapshot);
       return;
     }
 
-    // Otherwise, create a new panel
+    // 创建新面板
     const panel = vscode.window.createWebviewPanel(
       'antigravityQuotaDetail',
       '📊 Antigravity Quota Details',
@@ -43,54 +69,101 @@ export class QuotaPanel {
       }
     );
 
-    QuotaPanel.currentPanel = new QuotaPanel(panel, extensionUri);
+    QuotaPanel.currentPanel = new QuotaPanel(
+      panel,
+      localizationService,
+      eventBus
+    );
     QuotaPanel.currentPanel.updateContent(snapshot);
   }
 
-  public updateContent(snapshot: QuotaSnapshot | null) {
-    this._panel.webview.html = this._getHtmlForWebview(snapshot);
+  /**
+   * 订阅事件
+   */
+  private subscribeToEvents(): void {
+    if (!this.eventBus) {
+      return;
+    }
+
+    // 订阅配额更新事件，自动刷新面板
+    const unsubQuotaUpdate = this.eventBus.on(
+      EventType.QUOTA_UPDATE,
+      (snapshot) => {
+        this.updateContent(snapshot);
+      }
+    );
+    this.eventSubscriptions.push(unsubQuotaUpdate);
   }
 
-  public dispose() {
+  /**
+   * 更新面板内容
+   */
+  public updateContent(snapshot: QuotaSnapshot | null): void {
+    this.panel.webview.html = this.getHtmlForWebview(snapshot);
+  }
+
+  /**
+   * 销毁面板
+   */
+  public dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+
     QuotaPanel.currentPanel = undefined;
 
-    // Clean up our resources
-    this._panel.dispose();
+    // 取消事件订阅
+    for (const subscription of this.eventSubscriptions) {
+      subscription.dispose();
+    }
+    this.eventSubscriptions = [];
 
-    while (this._disposables.length) {
-      const disposable = this._disposables.pop();
+    // 销毁面板
+    this.panel.dispose();
+
+    // 销毁其他资源
+    while (this.disposables.length) {
+      const disposable = this.disposables.pop();
       if (disposable) {
         disposable.dispose();
       }
     }
   }
 
-  private _update() {
-    const webview = this._panel.webview;
-    this._panel.title = '📊 Antigravity Quota Details';
+  /**
+   * 更新面板标题
+   */
+  private update(): void {
+    this.panel.title = '📊 Antigravity Quota Details';
   }
 
-  private _getHtmlForWebview(snapshot: QuotaSnapshot | null): string {
+  /**
+   * 生成 Webview HTML
+   */
+  private getHtmlForWebview(snapshot: QuotaSnapshot | null): string {
     if (!snapshot || !snapshot.models || snapshot.models.length === 0) {
-      return this._getErrorHtml('No quota data available. Please refresh.');
+      return this.getErrorHtml(
+        this.localizationService.t('panel.noData') || 'No quota data available. Please refresh.'
+      );
     }
 
     const modelRows = snapshot.models
-      .map(model => this._generateModelRow(model))
+      .map((model) => this.generateModelRow(model))
       .join('');
 
     const planSection = snapshot.planName
       ? `<div class="info-card">
-          <h3>📦 Plan Information</h3>
-          <p><strong>Plan:</strong> ${this._escapeHtml(snapshot.planName)}</p>
+          <h3>📦 ${this.localizationService.t('panel.planInfo') || 'Plan Information'}</h3>
+          <p><strong>Plan:</strong> ${this.escapeHtml(snapshot.planName)}</p>
         </div>`
       : '';
 
     const creditsSection = snapshot.promptCredits
       ? `<div class="info-card">
-          <h3>💳 Prompt Credits</h3>
-          <p><strong>Available:</strong> ${snapshot.promptCredits.available} / ${snapshot.promptCredits.monthly}</p>
-          <p><strong>Remaining:</strong> ${snapshot.promptCredits.remainingPercentage.toFixed(1)}%</p>
+          <h3>💳 ${this.localizationService.t('panel.promptCredits') || 'Prompt Credits'}</h3>
+          <p><strong>${this.localizationService.t('tooltip.available') || 'Available'}:</strong> ${snapshot.promptCredits.available} / ${snapshot.promptCredits.monthly}</p>
+          <p><strong>${this.localizationService.t('tooltip.remaining') || 'Remaining'}:</strong> ${snapshot.promptCredits.remainingPercentage.toFixed(1)}%</p>
           <div class="progress-bar">
             <div class="progress-fill" style="width: ${snapshot.promptCredits.remainingPercentage}%"></div>
           </div>
@@ -109,7 +182,7 @@ export class QuotaPanel {
       margin: 0;
       padding: 0;
     }
-    
+
     body {
       font-family: var(--vscode-font-family);
       color: var(--vscode-foreground);
@@ -117,19 +190,19 @@ export class QuotaPanel {
       padding: 20px;
       line-height: 1.6;
     }
-    
+
     h1 {
       font-size: 24px;
       margin-bottom: 20px;
       color: var(--vscode-titleBar-activeForeground);
     }
-    
+
     h3 {
       font-size: 16px;
       margin-bottom: 10px;
       color: var(--vscode-foreground);
     }
-    
+
     .info-card {
       background-color: var(--vscode-editor-inactiveSelectionBackground);
       border-left: 4px solid var(--vscode-activityBarBadge-background);
@@ -137,15 +210,15 @@ export class QuotaPanel {
       margin-bottom: 20px;
       border-radius: 4px;
     }
-    
+
     .info-card p {
       margin: 5px 0;
     }
-    
+
     .models-section {
       margin-top: 20px;
     }
-    
+
     .model-card {
       background-color: var(--vscode-editor-inactiveSelectionBackground);
       border: 1px solid var(--vscode-panel-border);
@@ -154,19 +227,19 @@ export class QuotaPanel {
       margin-bottom: 15px;
       transition: transform 0.2s, box-shadow 0.2s;
     }
-    
+
     .model-card:hover {
       transform: translateY(-2px);
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
-    
+
     .model-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-bottom: 10px;
     }
-    
+
     .model-name {
       font-size: 18px;
       font-weight: bold;
@@ -174,21 +247,21 @@ export class QuotaPanel {
       align-items: center;
       gap: 8px;
     }
-    
+
     .status-indicator {
       font-size: 20px;
     }
-    
+
     .model-percentage {
       font-size: 24px;
       font-weight: bold;
     }
-    
+
     .percentage-good { color: #4caf50; }
     .percentage-warning { color: #ff9800; }
     .percentage-critical { color: #f44336; }
     .percentage-exhausted { color: #9e9e9e; }
-    
+
     .progress-bar {
       height: 20px;
       background-color: var(--vscode-input-background);
@@ -197,7 +270,7 @@ export class QuotaPanel {
       margin: 10px 0;
       border: 1px solid var(--vscode-panel-border);
     }
-    
+
     .progress-fill {
       height: 100%;
       background: linear-gradient(90deg, #4caf50, #8bc34a);
@@ -210,19 +283,19 @@ export class QuotaPanel {
       font-size: 12px;
       font-weight: bold;
     }
-    
+
     .progress-fill.warning {
       background: linear-gradient(90deg, #ff9800, #ffc107);
     }
-    
+
     .progress-fill.critical {
       background: linear-gradient(90deg, #f44336, #e91e63);
     }
-    
+
     .progress-fill.exhausted {
       background: #9e9e9e;
     }
-    
+
     .model-details {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -231,31 +304,31 @@ export class QuotaPanel {
       padding-top: 10px;
       border-top: 1px solid var(--vscode-panel-border);
     }
-    
+
     .detail-item {
       display: flex;
       flex-direction: column;
     }
-    
+
     .detail-label {
       font-size: 11px;
       text-transform: uppercase;
       color: var(--vscode-descriptionForeground);
       margin-bottom: 3px;
     }
-    
+
     .detail-value {
       font-size: 14px;
       font-weight: 500;
     }
-    
+
     .timestamp {
       text-align: center;
       margin-top: 30px;
       color: var(--vscode-descriptionForeground);
       font-size: 12px;
     }
-    
+
     .error-message {
       background-color: var(--vscode-inputValidation-errorBackground);
       border: 1px solid var(--vscode-inputValidation-errorBorder);
@@ -267,31 +340,34 @@ export class QuotaPanel {
   </style>
 </head>
 <body>
-  <h1>📊 Antigravity Quota Status</h1>
-  
+  <h1>📊 ${this.localizationService.t('panel.title') || 'Antigravity Quota Status'}</h1>
+
   ${planSection}
   ${creditsSection}
-  
+
   <div class="models-section">
-    <h3>🤖 Model Quotas</h3>
+    <h3>🤖 ${this.localizationService.t('panel.modelQuotas') || 'Model Quotas'}</h3>
     ${modelRows}
   </div>
-  
+
   <div class="timestamp">
-    Last updated: ${new Date().toLocaleString()}
+    ${this.localizationService.t('panel.lastUpdated') || 'Last updated'}: ${new Date().toLocaleString()}
   </div>
 </body>
 </html>`;
   }
 
-  private _generateModelRow(model: ModelQuotaInfo): string {
+  /**
+   * 生成模型行 HTML
+   */
+  private generateModelRow(model: ModelQuotaInfo): string {
     const percentage = model.remainingPercentage ?? 0;
     const isExhausted = model.isExhausted || percentage === 0;
-    
+
     let statusClass = 'percentage-good';
     let progressClass = '';
     let statusIcon = '🟢';
-    
+
     if (isExhausted) {
       statusClass = 'percentage-exhausted';
       progressClass = 'exhausted';
@@ -305,43 +381,48 @@ export class QuotaPanel {
       progressClass = 'warning';
       statusIcon = '🟡';
     }
-    
-    const displayPercentage = isExhausted ? 'Exhausted' : `${percentage.toFixed(1)}%`;
-    
+
+    const displayPercentage = isExhausted
+      ? this.localizationService.t('tooltip.depleted') || 'Exhausted'
+      : `${percentage.toFixed(1)}%`;
+
     return `
     <div class="model-card">
       <div class="model-header">
         <div class="model-name">
           <span class="status-indicator">${statusIcon}</span>
-          <span>${this._escapeHtml(model.label)}</span>
+          <span>${this.escapeHtml(model.label)}</span>
         </div>
         <div class="model-percentage ${statusClass}">
           ${displayPercentage}
         </div>
       </div>
-      
+
       <div class="progress-bar">
         <div class="progress-fill ${progressClass}" style="width: ${percentage}%"></div>
       </div>
-      
+
       <div class="model-details">
         <div class="detail-item">
-          <span class="detail-label">Model ID</span>
-          <span class="detail-value">${this._escapeHtml(model.modelId || 'N/A')}</span>
+          <span class="detail-label">${this.localizationService.t('panel.modelId') || 'Model ID'}</span>
+          <span class="detail-value">${this.escapeHtml(model.modelId || 'N/A')}</span>
         </div>
         <div class="detail-item">
-          <span class="detail-label">Reset Time</span>
+          <span class="detail-label">${this.localizationService.t('tooltip.resetTime') || 'Reset Time'}</span>
           <span class="detail-value">${model.resetTime ? model.resetTime.toLocaleString() : 'N/A'}</span>
         </div>
         <div class="detail-item">
-          <span class="detail-label">Time Until Reset</span>
+          <span class="detail-label">${this.localizationService.t('panel.timeUntilReset') || 'Time Until Reset'}</span>
           <span class="detail-value">${model.timeUntilResetFormatted || 'N/A'}</span>
         </div>
       </div>
     </div>`;
   }
 
-  private _getErrorHtml(message: string): string {
+  /**
+   * 生成错误 HTML
+   */
+  private getErrorHtml(message: string): string {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -372,19 +453,22 @@ export class QuotaPanel {
 </head>
 <body>
   <div class="error-message">
-    <h2>⚠️ Error</h2>
-    <p>${this._escapeHtml(message)}</p>
+    <h2>⚠️ ${this.localizationService.t('panel.error') || 'Error'}</h2>
+    <p>${this.escapeHtml(message)}</p>
   </div>
 </body>
 </html>`;
   }
 
-  private _escapeHtml(unsafe: string): string {
+  /**
+   * HTML 转义（防止 XSS）
+   */
+  private escapeHtml(unsafe: string): string {
     return unsafe
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 }

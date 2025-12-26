@@ -1,46 +1,62 @@
 /**
- * Status bar service
+ * 状态栏服务
+ *
+ * 负责管理 VS Code 状态栏的 UI 显示。
+ * 纯 UI 操作组件，不包含事件订阅逻辑（由 StatusBarPresenter 处理）。
  */
 
 import * as vscode from 'vscode';
-import { ModelQuotaInfo, QuotaSnapshot } from './types';
-import { LocalizationService } from './i18n/localizationService';
+import type {
+  IStatusBarService,
+  DisplayStyle,
+} from '../core/interfaces/IStatusBarService';
+import type { ILocalizationService } from '../core/interfaces/ILocalizationService';
+import type { ModelQuotaInfo, QuotaSnapshot } from '../core/types';
 
-export class StatusBarService {
-  private statusBarItem: vscode.StatusBarItem;
-  private warningThreshold: number;
-  private criticalThreshold: number;
-  private showPromptCredits: boolean;
-  private showPlanName: boolean;
-  private displayStyle: 'percentage' | 'progressBar' | 'dots';
-  private localizationService: LocalizationService;
+/**
+ * 状态栏服务实现
+ */
+export class StatusBarService implements IStatusBarService {
+  private readonly statusBarItem: vscode.StatusBarItem;
+  private warningThreshold: number = 50;
+  private criticalThreshold: number = 30;
+  private showPromptCredits: boolean = false;
+  private showPlanName: boolean = false;
+  private displayStyle: DisplayStyle = 'progressBar';
 
   private isQuickRefreshing: boolean = false;
   private refreshStartTime: number = 0;
   private readonly minRefreshDuration: number = 1000;
 
-  constructor(
-    warningThreshold: number = 50,
-    criticalThreshold: number = 30,
-    showPromptCredits: boolean = false,
-    showPlanName: boolean = false,
-    displayStyle: 'percentage' | 'progressBar' | 'dots' = 'progressBar'
-  ) {
-    this.localizationService = LocalizationService.getInstance();
+  private disposed: boolean = false;
+
+  constructor(private readonly localizationService: ILocalizationService) {
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Right,
       100
     );
     this.statusBarItem.command = 'antigravity-quota-watcher.showQuota';
-    this.warningThreshold = warningThreshold;
-    this.criticalThreshold = criticalThreshold;
-    this.showPromptCredits = showPromptCredits;
-    this.showPlanName = showPlanName;
-    this.displayStyle = displayStyle;
   }
 
+  /**
+   * 显示状态栏
+   */
+  show(): void {
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 隐藏状态栏
+   */
+  hide(): void {
+    this.statusBarItem.hide();
+  }
+
+  /**
+   * 更新配额显示
+   */
   updateDisplay(snapshot: QuotaSnapshot): void {
-    // Respect the minimum animation duration for quick refresh
+    // 确保快速刷新动画有最小持续时间
     if (this.isQuickRefreshing && this.refreshStartTime > 0) {
       const elapsed = Date.now() - this.refreshStartTime;
       if (elapsed < this.minRefreshDuration) {
@@ -52,10 +68,10 @@ export class StatusBarService {
       }
     }
 
-    // Clear refreshing state
+    // 清除刷新状态
     this.isQuickRefreshing = false;
     this.refreshStartTime = 0;
-    // Allow quick refresh command after a successful update
+    // 允许快速刷新命令
     this.statusBarItem.command = 'antigravity-quota-watcher.quickRefreshQuota';
 
     const parts: string[] = [];
@@ -114,6 +130,142 @@ export class StatusBarService {
   }
 
   /**
+   * 显示检测中状态
+   */
+  showDetecting(): void {
+    this.statusBarItem.text = this.localizationService.t('status.detecting');
+    this.statusBarItem.backgroundColor = undefined;
+    this.statusBarItem.tooltip = this.localizationService.t('status.detecting');
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 显示初始化状态
+   */
+  showInitializing(): void {
+    this.statusBarItem.text = this.localizationService.t('status.initializing');
+    this.statusBarItem.backgroundColor = undefined;
+    this.statusBarItem.tooltip = this.localizationService.t('status.initializing');
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 显示获取中状态
+   */
+  showFetching(): void {
+    this.statusBarItem.text = this.localizationService.t('status.fetching');
+    this.statusBarItem.backgroundColor = undefined;
+    this.statusBarItem.tooltip = this.localizationService.t('status.fetching');
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 显示重试状态
+   */
+  showRetrying(current: number, max: number): void {
+    this.statusBarItem.text = this.localizationService.t('status.retrying', {
+      current,
+      max,
+    });
+    this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+      'statusBarItem.warningBackground'
+    );
+    this.statusBarItem.tooltip = this.localizationService.t('status.retrying', {
+      current,
+      max,
+    });
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 显示错误状态
+   */
+  showError(_message: string): void {
+    this.statusBarItem.text = this.localizationService.t('status.error');
+    this.statusBarItem.backgroundColor = new vscode.ThemeColor(
+      'statusBarItem.errorBackground'
+    );
+    this.statusBarItem.tooltip = `${this.localizationService.t('status.error')}\n\n${this.localizationService.t('tooltip.clickToRetry')}`;
+    this.statusBarItem.command = 'antigravity-quota-watcher.refreshQuota';
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 显示快速刷新状态
+   */
+  showQuickRefreshing(): void {
+    if (this.isQuickRefreshing) {
+      return;
+    }
+    this.isQuickRefreshing = true;
+    this.refreshStartTime = Date.now();
+
+    const currentText = this.statusBarItem.text;
+    if (!currentText.startsWith('$(sync~spin)')) {
+      this.statusBarItem.text = this.localizationService.t('status.refreshing');
+    }
+    this.statusBarItem.tooltip = this.localizationService.t('status.refreshing');
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 显示未登录状态
+   */
+  showNotLoggedIn(): void {
+    this.statusBarItem.text = this.localizationService.t('status.notLoggedIn');
+    this.statusBarItem.backgroundColor = undefined;
+    this.statusBarItem.color = new vscode.ThemeColor(
+      'statusBarItem.warningForeground'
+    );
+    this.statusBarItem.tooltip = `${this.localizationService.t('tooltip.notLoggedIn')}\n\n${this.localizationService.t('tooltip.clickToRecheck')}`;
+    this.statusBarItem.command = 'antigravity-quota-watcher.retryLoginCheck';
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 清除错误状态
+   */
+  clearError(): void {
+    this.statusBarItem.text = this.localizationService.t('status.fetching');
+    this.statusBarItem.backgroundColor = undefined;
+    this.statusBarItem.tooltip = this.localizationService.t('status.fetching');
+    this.statusBarItem.command = 'antigravity-quota-watcher.showQuota';
+    this.statusBarItem.show();
+  }
+
+  /**
+   * 设置阈值
+   */
+  setThresholds(warning: number, critical: number): void {
+    this.warningThreshold = warning;
+    this.criticalThreshold = critical;
+  }
+
+  /**
+   * 设置显示选项
+   */
+  setDisplayOptions(
+    showPromptCredits: boolean,
+    showPlanName: boolean,
+    displayStyle: DisplayStyle
+  ): void {
+    this.showPromptCredits = showPromptCredits;
+    this.showPlanName = showPlanName;
+    this.displayStyle = displayStyle;
+  }
+
+  /**
+   * 销毁服务
+   */
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.statusBarItem.dispose();
+  }
+
+  /**
    * 根据剩余百分比返回状态指示符号
    */
   private getStatusIndicator(percentage: number): string {
@@ -127,53 +279,46 @@ export class StatusBarService {
     return '🟢';
   }
 
-  setWarningThreshold(threshold: number): void {
-    this.warningThreshold = threshold;
-  }
-
-  setCriticalThreshold(threshold: number): void {
-    this.criticalThreshold = threshold;
-  }
-
-  setShowPromptCredits(value: boolean): void {
-    this.showPromptCredits = value;
-  }
-
-  setShowPlanName(value: boolean): void {
-    this.showPlanName = value;
-  }
-
-  setDisplayStyle(value: 'percentage' | 'progressBar' | 'dots'): void {
-    this.displayStyle = value;
-  }
-
+  /**
+   * 更新 tooltip
+   */
   private updateTooltip(snapshot: QuotaSnapshot): void {
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
     md.supportHtml = true;
 
-    // Header with visual separator
+    // 标题
     md.appendMarkdown(`### ${this.localizationService.t('tooltip.title')}\n\n`);
     md.appendMarkdown(`---\n\n`);
 
-    // Plan information (if available)
+    // 计划信息
     if (this.showPlanName && snapshot.planName) {
       md.appendMarkdown(`📦 **Plan:** ${snapshot.planName}\n\n`);
     }
 
-    // Prompt Credits section
+    // Prompt Credits 区域
     if (this.showPromptCredits && snapshot.promptCredits) {
       md.appendMarkdown(`${this.localizationService.t('tooltip.credits')}\n`);
-      md.appendMarkdown(`- ${this.localizationService.t('tooltip.available')}: \`${snapshot.promptCredits.available} / ${snapshot.promptCredits.monthly}\`\n`);
-      md.appendMarkdown(`- ${this.localizationService.t('tooltip.remaining')}: **${snapshot.promptCredits.remainingPercentage.toFixed(1)}%**\n\n`);
+      md.appendMarkdown(
+        `- ${this.localizationService.t('tooltip.available')}: \`${snapshot.promptCredits.available} / ${snapshot.promptCredits.monthly}\`\n`
+      );
+      md.appendMarkdown(
+        `- ${this.localizationService.t('tooltip.remaining')}: **${snapshot.promptCredits.remainingPercentage.toFixed(1)}%**\n\n`
+      );
     }
 
-    // Model quotas table with enhanced visualization
-    const sortedModels = [...snapshot.models].sort((a, b) => a.label.localeCompare(b.label));
+    // 模型配额表格
+    const sortedModels = [...snapshot.models].sort((a, b) =>
+      a.label.localeCompare(b.label)
+    );
 
     if (sortedModels.length > 0) {
-      md.appendMarkdown(`**${this.localizationService.t('tooltip.model')} Quotas:**\n\n`);
-      md.appendMarkdown(`| ${this.localizationService.t('tooltip.model')} | Progress | ${this.localizationService.t('tooltip.status')} | ${this.localizationService.t('tooltip.resetTime')} |\n`);
+      md.appendMarkdown(
+        `**${this.localizationService.t('tooltip.model')} Quotas:**\n\n`
+      );
+      md.appendMarkdown(
+        `| ${this.localizationService.t('tooltip.model')} | Progress | ${this.localizationService.t('tooltip.status')} | ${this.localizationService.t('tooltip.resetTime')} |\n`
+      );
       md.appendMarkdown(`| :--- | :---: | :---: | :--- |\n`);
 
       for (const model of sortedModels) {
@@ -191,11 +336,13 @@ export class StatusBarService {
           progressBar = this.createAsciiProgressBar(model.remainingPercentage);
         }
 
-        md.appendMarkdown(`| ${indicator} ${emoji} ${name} | ${progressBar} | ${status} | ${model.timeUntilResetFormatted} |\n`);
+        md.appendMarkdown(
+          `| ${indicator} ${emoji} ${name} | ${progressBar} | ${status} | ${model.timeUntilResetFormatted} |\n`
+        );
       }
     }
 
-    // Footer with action hint
+    // 底部提示
     md.appendMarkdown(`\n---\n\n`);
     md.appendMarkdown(`💡 **Tip:** Click to open quick menu\n`);
 
@@ -203,7 +350,7 @@ export class StatusBarService {
   }
 
   /**
-   * Create an ASCII progress bar for tooltip display
+   * 创建 ASCII 进度条
    */
   private createAsciiProgressBar(percentage: number, width: number = 10): string {
     const filled = Math.round((percentage / 100) * width);
@@ -211,15 +358,20 @@ export class StatusBarService {
     return `\`[${'█'.repeat(filled)}${'░'.repeat(empty)}]\``;
   }
 
+  /**
+   * 选择要显示的模型
+   */
   private selectModelsToDisplay(models: ModelQuotaInfo[]): ModelQuotaInfo[] {
     const result: ModelQuotaInfo[] = [];
 
-    const proLow = models.find(model => this.isProLow(model.label));
+    const proLow = models.find((model) => this.isProLow(model.label));
     if (proLow) {
       result.push(proLow);
     }
 
-    const claude = models.find(model => this.isClaudeWithoutThinking(model.label));
+    const claude = models.find((model) =>
+      this.isClaudeWithoutThinking(model.label)
+    );
     if (claude && claude !== proLow) {
       result.push(claude);
     }
@@ -311,85 +463,5 @@ export class StatusBarService {
 
   private formatPlanName(rawName: string): string {
     return rawName;
-  }
-
-  showQuickRefreshing(): void {
-    if (this.isQuickRefreshing) {
-      return;
-    }
-    this.isQuickRefreshing = true;
-    this.refreshStartTime = Date.now();
-
-    const currentText = this.statusBarItem.text;
-    if (!currentText.startsWith('$(sync~spin)')) {
-      this.statusBarItem.text = this.localizationService.t('status.refreshing');
-    }
-    this.statusBarItem.tooltip = this.localizationService.t('status.refreshing');
-    this.statusBarItem.show();
-  }
-
-  showDetecting(): void {
-    this.statusBarItem.text = this.localizationService.t('status.detecting');
-    this.statusBarItem.backgroundColor = undefined;
-    this.statusBarItem.tooltip = this.localizationService.t('status.detecting');
-    this.statusBarItem.show();
-  }
-
-  showInitializing(): void {
-    this.statusBarItem.text = this.localizationService.t('status.initializing');
-    this.statusBarItem.backgroundColor = undefined;
-    this.statusBarItem.tooltip = this.localizationService.t('status.initializing');
-    this.statusBarItem.show();
-  }
-
-  showFetching(): void {
-    this.statusBarItem.text = this.localizationService.t('status.fetching');
-    this.statusBarItem.backgroundColor = undefined;
-    this.statusBarItem.tooltip = this.localizationService.t('status.fetching');
-    this.statusBarItem.show();
-  }
-
-  showRetrying(currentRetry: number, maxRetries: number): void {
-    this.statusBarItem.text = this.localizationService.t('status.retrying', { current: currentRetry, max: maxRetries });
-    this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-    this.statusBarItem.tooltip = this.localizationService.t('status.retrying', { current: currentRetry, max: maxRetries });
-    this.statusBarItem.show();
-  }
-
-  showError(_message: string): void {
-    this.statusBarItem.text = this.localizationService.t('status.error');
-    this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-    this.statusBarItem.tooltip = `${this.localizationService.t('status.error')}\n\n${this.localizationService.t('tooltip.clickToRetry')}`;
-    this.statusBarItem.command = 'antigravity-quota-watcher.refreshQuota';
-    this.statusBarItem.show();
-  }
-
-  clearError(): void {
-    this.statusBarItem.text = this.localizationService.t('status.fetching');
-    this.statusBarItem.backgroundColor = undefined;
-    this.statusBarItem.tooltip = this.localizationService.t('status.fetching');
-    this.statusBarItem.command = 'antigravity-quota-watcher.showQuota';
-    this.statusBarItem.show();
-  }
-
-  showNotLoggedIn(): void {
-    this.statusBarItem.text = this.localizationService.t('status.notLoggedIn');
-    this.statusBarItem.backgroundColor = undefined;
-    this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.warningForeground');
-    this.statusBarItem.tooltip = `${this.localizationService.t('tooltip.notLoggedIn')}\n\n${this.localizationService.t('tooltip.clickToRecheck')}`;
-    this.statusBarItem.command = 'antigravity-quota-watcher.retryLoginCheck';
-    this.statusBarItem.show();
-  }
-
-  show(): void {
-    this.statusBarItem.show();
-  }
-
-  hide(): void {
-    this.statusBarItem.hide();
-  }
-
-  dispose(): void {
-    this.statusBarItem.dispose();
   }
 }
