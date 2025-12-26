@@ -126,12 +126,10 @@ suite('EventBus 测试套件', () => {
     });
 
     test('全局错误处理器应该被调用', () => {
-      let errorReceived: Error | null = null;
-      let eventTypeReceived: EventType | null = null;
+      const errors: { error: Error; eventType: EventType }[] = [];
 
       eventBus.onError((error, eventType) => {
-        errorReceived = error;
-        eventTypeReceived = eventType;
+        errors.push({ error, eventType });
       });
 
       eventBus.on(EventType.QUOTA_FETCH_START, () => {
@@ -140,9 +138,9 @@ suite('EventBus 测试套件', () => {
 
       eventBus.emit(EventType.QUOTA_FETCH_START, undefined);
 
-      assert.notStrictEqual(errorReceived, null);
-      assert.strictEqual(errorReceived?.message, '测试错误');
-      assert.strictEqual(eventTypeReceived, EventType.QUOTA_FETCH_START);
+      assert.strictEqual(errors.length, 1);
+      assert.strictEqual(errors[0].error.message, '测试错误');
+      assert.strictEqual(errors[0].eventType, EventType.QUOTA_FETCH_START);
     });
 
     test('全局错误处理器可以取消订阅', () => {
