@@ -1,0 +1,165 @@
+{
+  "name": "antigravity-quota-watcher",
+  "displayName": "Antigravity Quota Watcher",
+  "description": "实时监控 Antigravity的模型使用配额",
+  "version": "0.0.3",
+  "publisher": "antigravity-tools",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravity-quota-watcher.showQuota",
+        "title": "%command.showQuota%"
+      },
+      {
+        "command": "antigravity-quota-watcher.showDetailedPanel",
+        "title": "%command.showDetailedPanel%"
+      },
+      {
+        "command": "antigravity-quota-watcher.refreshQuota",
+        "title": "%command.refreshQuota%"
+      },
+      {
+        "command": "antigravity-quota-watcher.detectPort",
+        "title": "%command.detectPort%"
+      }
+    ],
+    "configuration": {
+      "title": "Antigravity Quota Watcher",
+      "properties": {
+        "antigravity-quota-watcher.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.enabled%",
+          "order": 10
+        },
+        "antigravity-quota-watcher.pollingInterval": {
+          "type": "number",
+          "default": 60,
+          "description": "%config.pollingInterval%",
+          "order": 20
+        },
+        "antigravity-quota-watcher.displayStyle": {
+          "type": "string",
+          "default": "percentage",
+          "enum": [
+            "percentage",
+            "progressBar",
+            "dots"
+          ],
+          "enumDescriptions": [
+            "Show percentage / 显示百分比 (e.g. 🟢 Claude: 85%)",
+            "Show progress bar / 显示方块进度条 (e.g. 🟢 Claude ███████░)",
+            "Show dots / 显示圆点进度条 (e.g. 🟢 Claude ●●●●○)"
+          ],
+          "description": "%config.displayStyle%",
+          "order": 30
+        },
+        "antigravity-quota-watcher.apiMethod": {
+          "type": "string",
+          "default": "GET_USER_STATUS",
+          "enum": [
+            "GET_USER_STATUS",
+            "COMMAND_MODEL_CONFIG"
+          ],
+          "description": "%config.apiMethod%",
+          "order": 40
+        },
+        "antigravity-quota-watcher.warningThreshold": {
+          "type": "number",
+          "default": 50,
+          "description": "%config.warningThreshold%",
+          "order": 50
+        },
+        "antigravity-quota-watcher.criticalThreshold": {
+          "type": "number",
+          "default": 30,
+          "description": "%config.criticalThreshold%",
+          "order": 60
+        },
+        "antigravity-quota-watcher.showPromptCredits": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.showPromptCredits%",
+          "order": 70
+        },
+        "antigravity-quota-watcher.showPlanName": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.showPlanName%",
+          "order": 72
+        },
+        "antigravity-quota-watcher.forcePowerShell": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.forcePowerShell%",
+          "order": 75
+        },
+        "antigravity-quota-watcher.allowHttpFallback": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.allowHttpFallback%",
+          "order": 78
+        },
+        "antigravity-quota-watcher.language": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "en",
+            "zh-cn"
+          ],
+          "enumDescriptions": [
+            "Auto (Based on VS Code language) / 自动 (跟随 VS Code 语言)",
+            "English",
+            "Chinese (Simplified) / 简体中文"
+          ],
+          "description": "%config.language%",
+          "order": 80
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "npx --registry https://registry.npmjs.org @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "https": "^1.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": [
+    "antigravity",
+    "quota",
+    "monitor",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT"
+}

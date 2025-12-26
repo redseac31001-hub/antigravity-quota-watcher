@@ -1,0 +1,49 @@
+# 源代码（只打包编译后的代码）
+src/**
+**/*.ts
+
+# 开发工具配置
+.vscode/**
+.vscode-test/**
+.gitignore
+.yarnrc
+.eslintrc.json
+**/.eslintrc.json
+tsconfig.json
+**/tsconfig.json
+
+# 文档和说明
+vsc-extension-quickstart.md
+DESIGN.md
+*.md
+!README.md
+
+# 图片资源（托管在 GitHub，不需要打包）
+images/**
+*.png
+*.jpg
+*.gif
+!icon.png
+
+# 调试文件
+**/*.map
+
+# 依赖（会被打包工具处理）
+node_modules/**
+
+# 构建脚本
+build.ps1
+*.sh
+
+# 已打包的扩展
+*.vsix
+
+# 临时文件
+*.log
+.DS_Store
+Thumbs.db
+
+# 其他开发文件
+.claude/**
+.git/**
+.gitattributes

@@ -1,0 +1,60 @@
+# 依赖
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 构建输出
+out/
+dist/
+build/
+*.vsix
+*.zip
+*.rar
+
+# 测试
+.vscode-test/
+coverage/
+*.test.js
+*.spec.js
+
+# 日志
+*.log
+logs/
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 编辑器和 IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
+
+# 调试文件
+*.map
+
+# 其他
+.claude/
+
+CLAUDE.md
+AGENT.md
+.agent/workflows/package_extension.md
