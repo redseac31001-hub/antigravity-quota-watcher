@@ -1,8 +1,8 @@
 {
   "name": "antigravity-quota-watcher",
-  "displayName": "Antigravity Quota Watcher",
+  "displayName": "antigravity-quota-watcher",
   "description": "实时监控 Antigravity的模型使用配额",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "antigravity-tools",
   "icon": "icon.png",
   "engines": {

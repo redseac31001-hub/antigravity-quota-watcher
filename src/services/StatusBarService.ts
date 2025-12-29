@@ -364,26 +364,37 @@ export class StatusBarService implements IStatusBarService {
   private selectModelsToDisplay(models: ModelQuotaInfo[]): ModelQuotaInfo[] {
     const result: ModelQuotaInfo[] = [];
 
+    // Prioritize Gemini 3 Flash
+    const flash = models.find((model) => this.isGeminiFlash(model.label));
+    if (flash) {
+      result.push(flash);
+    }
+
     const proLow = models.find((model) => this.isProLow(model.label));
-    if (proLow) {
+    if (proLow && !result.includes(proLow)) {
       result.push(proLow);
     }
 
     const claude = models.find((model) =>
       this.isClaudeWithoutThinking(model.label)
     );
-    if (claude && claude !== proLow) {
+    if (claude && !result.includes(claude)) {
       result.push(claude);
     }
 
     for (const model of models) {
-      if (result.length >= 2) break;
+      if (result.length >= 3) break;
       if (!result.includes(model)) {
         result.push(model);
       }
     }
 
-    return result.slice(0, 2);
+    return result.slice(0, 3);
+  }
+
+  private isGeminiFlash(label: string): boolean {
+    const lower = label.toLowerCase();
+    return lower.includes('gemini') && lower.includes('flash');
   }
 
   private isProLow(label: string): boolean {
@@ -425,6 +436,7 @@ export class StatusBarService implements IStatusBarService {
       return 'Claude';
     }
     if (label.includes('Flash')) {
+      if (label.includes('8B')) { return 'Flash 8B'; }
       return 'Flash';
     }
     if (label.includes('Pro (High)') || label.includes('Pro (Low)') || label.includes('Pro')) {
